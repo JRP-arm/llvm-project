@@ -4044,6 +4044,22 @@ LogicalResult TaskgroupOp::verify() {
                                 getTaskReductionByref());
 }
 
+void TaskgroupOp::getEffects(
+    llvm::SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  // Model task scheduling point
+  effects.emplace_back(MemoryEffects::Read::get());
+  effects.emplace_back(MemoryEffects::Write::get());
+
+  auto iface = cast<BlockArgOpenMPOpInterface>(getOperation());
+  Block::BlockArgListType reductionArgs = iface.getTaskReductionBlockArgs();
+
+  for (BlockArgument privateAccumulator : reductionArgs) {
+    effects.emplace_back(MemoryEffects::Allocate::get(), privateAccumulator);
+    effects.emplace_back(MemoryEffects::Free::get(), privateAccumulator);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // TaskloopContextOp
 //===----------------------------------------------------------------------===//
@@ -5148,6 +5164,16 @@ void TaskwaitOp::build(OpBuilder &builder, OperationState &state,
       /*depend_iterated_kinds=*/makeArrayAttr(ctx, clauses.dependIteratedKinds),
       /*depend_iterated=*/ValueRange(clauses.dependIterated),
       /*nowait=*/clauses.nowait);
+}
+
+void TaskwaitOp::getEffects(
+    llvm::SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  if (!getDependVars().empty() || !getDependIterated().empty() ||
+      !getNowait()) {
+    effects.emplace_back(MemoryEffects::Read::get());
+    effects.emplace_back(MemoryEffects::Write::get());
+  }
 }
 
 //===----------------------------------------------------------------------===//

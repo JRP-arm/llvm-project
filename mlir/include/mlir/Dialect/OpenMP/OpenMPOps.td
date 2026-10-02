@@ -1232,7 +1232,8 @@ def TaskloopWrapperOp : OpenMP_Op<"taskloop.wrapper", traits = [
 }
 
 def TaskgroupOp : OpenMP_Op<"taskgroup", traits = [
-    AttrSizedOperandSegments, AutomaticAllocationScope
+    AttrSizedOperandSegments, AutomaticAllocationScope,
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>, RecursiveMemoryEffects
   ], clauses = [
     OpenMP_AllocateClause, OpenMP_TaskReductionClause
   ], singleRegion = true> {
@@ -1890,7 +1891,8 @@ def OrderedRegionOp : OpenMP_Op<"ordered.region", clauses = [
 //===----------------------------------------------------------------------===//
 
 def TaskwaitOp
-    : OpenMP_Op<"taskwait", traits = [AttrSizedOperandSegments],
+    : OpenMP_Op<"taskwait", traits = [AttrSizedOperandSegments,
+                DeclareOpInterfaceMethods<MemoryEffectsOpInterface>],
                 clauses = [OpenMP_DependClause, OpenMP_NowaitClause]> {
   let summary = "taskwait construct";
   let description = [{

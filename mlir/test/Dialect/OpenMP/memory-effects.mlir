@@ -118,6 +118,18 @@ func.func @critical_effects() {
   return
 }
 
+func.func @taskgroup_reduction(%x: memref<f32>) {
+  // expected-remark@+4 {{found an instance of 'allocate' on block argument 0, on resource '<Default>'}}
+  // expected-remark@+3 {{found an instance of 'free' on block argument 0, on resource '<Default>'}}
+  // expected-remark@+2 {{found an instance of 'read' on resource '<Default>'}}
+  // expected-remark@+1 {{found an instance of 'write' on resource '<Default>'}}
+  omp.taskgroup task_reduction(
+      @add_f32 %x -> %private_x : memref<f32>) {
+    omp.terminator
+  }
+  return
+}
+
 func.func @task_in_reduction(%x: memref<f32>) {
   // expected-remark@+4 {{found an instance of 'allocate' on block argument 0, on resource '<Default>'}}
   // expected-remark@+3 {{found an instance of 'free' on block argument 0, on resource '<Default>'}}
@@ -141,3 +153,23 @@ func.func @task_private(%x: memref<i32>) {
   return
 }
 
+func.func @taskwait_plain() {
+  // expected-remark@+2 {{found an instance of 'read' on resource '<Default>'}}
+  // expected-remark@+1 {{found an instance of 'write' on resource '<Default>'}}
+  omp.taskwait
+  return
+}
+
+func.func @taskwait_nowait_depend(%x: memref<i32>) {
+  // expected-remark@+2 {{found an instance of 'read' on resource '<Default>'}}
+  // expected-remark@+1 {{found an instance of 'write' on resource '<Default>'}}
+  omp.taskwait depend(taskdependout -> %x : memref<i32>) nowait
+  return
+}
+
+func.func @taskwait_depend_iterated(%ptr : !omp.iterated<!llvm.ptr>) {
+  // expected-remark@+2 {{found an instance of 'read' on resource '<Default>'}}
+  // expected-remark@+1 {{found an instance of 'write' on resource '<Default>'}}
+  omp.taskwait depend(taskdependout -> %ptr : !omp.iterated<!llvm.ptr>) nowait
+  return
+}
