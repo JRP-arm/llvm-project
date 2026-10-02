@@ -3412,6 +3412,22 @@ LogicalResult SingleOp::verify() {
   return verifyCopyprivateVarList(*this, getCopyprivateVars(),
                                   getCopyprivateSyms());
 }
+void SingleOp::getEffects(
+    llvm::SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+
+  if (!getNowait()) {
+    effects.emplace_back(MemoryEffects::Read::get());
+    effects.emplace_back(MemoryEffects::Write::get());
+  }
+
+  getPrivatisationEffects(*this, effects);
+
+  for (OpOperand &copyprivateVar : getCopyprivateVarsMutable()) {
+    effects.emplace_back(MemoryEffects::Read::get(), &copyprivateVar);
+    effects.emplace_back(MemoryEffects::Write::get(), &copyprivateVar);
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // WorkshareOp
