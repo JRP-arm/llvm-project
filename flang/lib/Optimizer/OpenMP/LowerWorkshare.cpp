@@ -364,28 +364,24 @@ struct ThreadLocalReads {
 // memory-effecting operation may report a read of unspecified memory (a read
 // effect with no attached value). Neither read can be attributed to a specific
 // location, so reads.unknown is set to force every thread-local write to be
-// broadcasted. Other interface-less operations (e.g. omp.barrier, fir.declare)
-// have known, inspectable behaviour and are safe to ignore here.
+// broadcasted.
 static void collectThreadLocalReads(Region &scope, ThreadLocalReads &reads) {
   scope.walk([&](Operation *op) {
     if (isa<mlir::CallOpInterface>(op)) {
       reads.unknown = true;
       return;
     }
-    // TODO: An op that does not implement MemoryEffectOpInterface has
-    // unknown effects and could read a thread-local location, so the
-    // conservative choice would be to set reads.unknown here.
-    // However, we deliberately don't, because the interface-less ops we see in
-    // practice (omp.barrier, fir.declare, etc) have known, inspectable
-    // behaviour and never read program memory. Forcing a broadcast for them
-    // would defeat the read-back optimization. This assumption only holds for
-    // the FIR/HLFIR/OpenMP dialects we know about; an op from another dialect
-    // could break it. Once such ops are properly mapped (or made to model
-    // their effects), fall back to reads.unknown here for any remaining
-    // unknown-effect ops instead of ignoring them.
-    auto memEffects = dyn_cast<MemoryEffectOpInterface>(op);
-    if (!memEffects)
+    // The barrier's memory effects conservatively model synchronisation.
+    // It does not represent a read of a thread-local value
+    if (isa<omp::BarrierOp>(op))
       return;
+
+    auto memEffects = dyn_cast<MemoryEffectOpInterface>(op);
+    if (!memEffects) {
+      if (hasUnknownEffects(op))
+        reads.unknown = true;
+      return;
+    }
     SmallVector<MemoryEffects::EffectInstance> effects;
     memEffects.getEffects(effects);
     for (const MemoryEffects::EffectInstance &effect : effects) {

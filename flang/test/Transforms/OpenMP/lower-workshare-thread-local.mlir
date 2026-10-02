@@ -651,3 +651,94 @@ func.func @opaque_call_forces_broadcast(%shared: !fir.ref<i32>) {
 // CHECK:       %[[TL:.*]] = fir.alloca i32
 // CHECK:         omp.single copyprivate(%[[TL]] -> @_workshare_copy_i32 : !fir.ref<i32>) {
 // CHECK:           fir.store %{{.*}} to %[[TL]] : !fir.ref<i32>
+
+// -----
+
+// An operation with unknown effects may read thread-local memory even when
+// it does not implement a memory effect interface. Its presence must force a broadcast.
+
+// CHECK-LABEL: func.func @unknown_non_call_forces_broadcast
+func.func @unknown_non_call_forces_broadcast(%shared: !fir.ref<i32>) {
+  omp.parallel {
+    %tl = fir.alloca i32
+    omp.workshare {
+      %v = fir.load %shared : !fir.ref<i32>
+      fir.store %v to %tl : !fir.ref<i32>
+      omp.terminator
+    }
+    "unknown.op"(%tl) : (!fir.ref<i32>) -> ()
+    omp.terminator
+  }
+  return
+}
+
+// CHECK:       omp.parallel {
+// CHECK-NEXT:    %[[TL:.*]] = fir.alloca i32
+// CHECK-NEXT:    omp.single copyprivate(%[[TL]] -> @_workshare_copy_i32 : !fir.ref<i32>) {
+// CHECK:           fir.store %{{.*}} to %[[TL]] : !fir.ref<i32>
+// CHECK:         "unknown.op"(%[[TL]]) : (!fir.ref<i32>) -> ()
+
+// -----
+
+// A barrier models synchronisation with unspecified read/write effects, but
+// those effects do not require broadcasting a write-only thread-local value.
+
+// CHECK-LABEL: func.func @barrier_does_not_force_broadcast
+func.func @barrier_does_not_force_broadcast(%shared: !fir.ref<i32>) {
+  omp.parallel {
+    %tl = fir.alloca i32
+    omp.workshare {
+      %v = fir.load %shared : !fir.ref<i32>
+      fir.store %v to %tl : !fir.ref<i32>
+      omp.terminator
+    }
+    omp.barrier
+    omp.terminator
+  }
+  return
+}
+
+// CHECK:       omp.parallel {
+// CHECK-NEXT:    %[[TL:.*]] = fir.alloca i32
+// CHECK-NEXT:    omp.single nowait {
+// CHECK:           fir.store %{{.*}} to %[[TL]] : !fir.ref<i32>
+// CHECK-NEXT:      omp.terminator
+// CHECK-NEXT:    }
+// CHECK-NEXT:    omp.barrier
+// CHECK-NEXT:    omp.barrier
+// CHECK-NEXT:    omp.terminator
+
+// -----
+
+// Firstprivate also reads the original through a recipe outside the parallel
+// region. An empty single body must not hide that read from workshare lowering.
+
+omp.private {type = firstprivate} @copies_original : i32 copy {
+^bb0(%original: !fir.ref<i32>, %copy: !fir.ref<i32>):
+  %v = fir.load %original : !fir.ref<i32>
+  fir.store %v to %copy : !fir.ref<i32>
+  omp.yield(%copy : !fir.ref<i32>)
+}
+
+// CHECK-LABEL: func.func @firstprivate_forces_broadcast
+func.func @firstprivate_forces_broadcast(%shared: !fir.ref<i32>) {
+  omp.parallel {
+    %tl = fir.alloca i32
+    omp.workshare {
+      %v = fir.load %shared : !fir.ref<i32>
+      fir.store %v to %tl : !fir.ref<i32>
+      omp.terminator
+    }
+    omp.single nowait private(@copies_original %tl -> %copy : !fir.ref<i32>) {
+      omp.terminator
+    }
+    omp.terminator
+  }
+  return
+}
+
+// CHECK:       omp.parallel {
+// CHECK-NEXT:    %[[TL:.*]] = fir.alloca i32
+// CHECK-NEXT:    omp.single copyprivate(%[[TL]] -> @_workshare_copy_i32 : !fir.ref<i32>) {
+// CHECK:           fir.store %{{.*}} to %[[TL]] : !fir.ref<i32>
+// CHECK:         omp.single nowait private(@copies_original %[[TL]] -> %{{.*}} : !fir.ref<i32>) {

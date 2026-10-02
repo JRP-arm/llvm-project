@@ -2934,3 +2934,53 @@ func.func @test_cheap_nested_omp_global_scalar(%arg0: !fir.ref<f64>) {
   }
   return
 }
+
+// -----
+// The reduction combiner writes a global that is distinct from the reduction
+// variable. Its effects must prevent hoisting the global load out of the loop,
+// even though the sections construct has nowait and its body has no stores.
+fir.global @global : i32
+
+omp.declare_reduction @touch_global : i32
+init {
+^bb0(%original: i32):
+  %zero = arith.constant 0 : i32
+  omp.yield(%zero : i32)
+}
+combiner {
+^bb0(%lhs: i32, %rhs: i32):
+  %global = fir.address_of(@global) : !fir.ref<i32>
+  fir.store %rhs to %global : !fir.ref<i32>
+  %sum = arith.addi %lhs, %rhs : i32
+  omp.yield(%sum : i32)
+}
+
+// CHECK-LABEL: func.func @reduction_recipe_licm()
+// CHECK: %[[GLOBAL:.*]] = fir.address_of(@global)
+// CHECK-NOT: fir.load %[[GLOBAL]]
+// CHECK: fir.do_loop
+// CHECK-NEXT: %[[VALUE:.*]] = fir.load %[[GLOBAL]] : !fir.ref<i32>
+// CHECK: omp.sections nowait reduction(@touch_global
+// CHECK: arith.addi %{{.*}}, %[[VALUE]] : i32
+// CHECK: fir.result
+func.func @reduction_recipe_licm() -> i32 {
+  %x = fir.alloca i32
+  %global = fir.address_of(@global) : !fir.ref<i32>
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %zero = arith.constant 0 : i32
+  fir.store %zero to %x : !fir.ref<i32>
+  %result = fir.do_loop %i = %c0 to %c1 step %c1 iter_args(%acc = %zero) -> (i32) {
+    %v = fir.load %global : !fir.ref<i32>
+    omp.sections nowait reduction(@touch_global %x -> %private_x : !fir.ref<i32>) {
+      omp.section {
+      ^bb0(%section_x: !fir.ref<i32>):
+        omp.terminator
+      }
+      omp.terminator
+    }
+    %next = arith.addi %acc, %v : i32
+    fir.result %next : i32
+  }
+  return %result : i32
+}
