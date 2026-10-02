@@ -1034,7 +1034,9 @@ def DistributeOp : OpenMP_Op<"distribute", traits = [
 def TaskOp : OpenMP_Op<"task", traits = [
     AttrSizedOperandSegments, AutomaticAllocationScope,
     DeclareOpInterfaceMethods<ComposableOpInterface>,
-    OutlineableOpenMPOpInterface
+    OutlineableOpenMPOpInterface,
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+    RecursiveMemoryEffects
   ], clauses = [
     OpenMP_AffinityClause, OpenMP_AllocateClause, OpenMP_DependClause,
     OpenMP_FinalClause, OpenMP_IfClause,

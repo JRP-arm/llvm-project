@@ -118,3 +118,26 @@ func.func @critical_effects() {
   return
 }
 
+func.func @task_in_reduction(%x: memref<f32>) {
+  // expected-remark@+4 {{found an instance of 'allocate' on block argument 0, on resource '<Default>'}}
+  // expected-remark@+3 {{found an instance of 'free' on block argument 0, on resource '<Default>'}}
+  // expected-remark@+2 {{found an instance of 'read' on resource '<Default>'}}
+  // expected-remark@+1 {{found an instance of 'write' on resource '<Default>'}}
+  omp.task in_reduction(
+      @add_f32 %x -> %private_x : memref<f32>) {
+    omp.terminator
+  }
+  return
+}
+
+func.func @task_private(%x: memref<i32>) {
+  // expected-remark@+4 {{found an instance of 'allocate' on block argument 0, on resource '<Default>'}}
+  // expected-remark@+3 {{found an instance of 'free' on block argument 0, on resource '<Default>'}}
+  // expected-remark@+2 {{found an instance of 'read' on resource '<Default>'}}
+  // expected-remark@+1 {{found an instance of 'write' on resource '<Default>'}}
+  omp.task private(@sections_p %x -> %private_x : memref<i32>) {
+    omp.terminator
+  }
+  return
+}
+
