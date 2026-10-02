@@ -5196,6 +5196,25 @@ LogicalResult AtomicCompareOp::verifyRegions() {
 }
 
 //===----------------------------------------------------------------------===//
+// ThreadprivateOp
+//===----------------------------------------------------------------------===//
+
+void ThreadprivateOp::getEffects(
+    llvm::SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+
+  effects.emplace_back(MemoryEffects::Read::get(), &getSymAddrMutable());
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       cast<OpResult>(getTlsAddr()));
+  effects.emplace_back(MemoryEffects::Allocate::get());
+
+  effects.emplace_back(MemoryEffects::Read::get(),
+                       ThreadprivateRuntimeResource::get());
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ThreadprivateRuntimeResource::get());
+}
+
+//===----------------------------------------------------------------------===//
 // CancelOp
 //===----------------------------------------------------------------------===//
 
