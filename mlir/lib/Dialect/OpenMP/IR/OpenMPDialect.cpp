@@ -3884,6 +3884,29 @@ LogicalResult TaskOp::verify() {
                                 getInReductionVars(), getInReductionByref());
 }
 
+void TaskOp::getEffects(
+    llvm::SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  // Model task scheduling point
+  effects.emplace_back(MemoryEffects::Read::get());
+  effects.emplace_back(MemoryEffects::Write::get());
+
+  auto iface = cast<BlockArgOpenMPOpInterface>(getOperation());
+  Block::BlockArgListType privateArgs = iface.getPrivateBlockArgs();
+
+  for (BlockArgument privateCopy : privateArgs) {
+    effects.emplace_back(MemoryEffects::Allocate::get(), privateCopy);
+    effects.emplace_back(MemoryEffects::Free::get(), privateCopy);
+  }
+
+  Block::BlockArgListType reductionArgs = iface.getInReductionBlockArgs();
+
+  for (BlockArgument privateAccumulator : reductionArgs) {
+    effects.emplace_back(MemoryEffects::Allocate::get(), privateAccumulator);
+    effects.emplace_back(MemoryEffects::Free::get(), privateAccumulator);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // TaskgroupOp
 //===----------------------------------------------------------------------===//

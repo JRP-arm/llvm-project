@@ -1230,16 +1230,19 @@ program main
   ! CHECK-NOT:  if({{.*}})
   ! CHECK-SAME: {
   !$omp task
+    call foo()
   !$omp end task
 
   ! CHECK:      omp.task
   ! CHECK-SAME: if({{.*}})
   !$omp task if(.true.)
+    call foo()
   !$omp end task
 
   ! CHECK:      omp.task
   ! CHECK-SAME: if({{.*}})
   !$omp task if(task: .true.)
+    call foo()
   !$omp end task
 
   ! ----------------------------------------------------------------------------
