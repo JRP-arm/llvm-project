@@ -1810,7 +1810,8 @@ def CriticalOp : OpenMP_Op<"critical", [
 // 2.17.2 barrier Construct
 //===----------------------------------------------------------------------===//
 
-def BarrierOp : OpenMP_Op<"barrier"> {
+def BarrierOp : OpenMP_Op<"barrier", traits = [
+  MemoryEffects<[MemRead, MemWrite]>]> {
   let summary = "barrier construct";
   let description = [{
     The barrier construct specifies an explicit barrier at the point at which
@@ -2142,7 +2143,8 @@ def AtomicCompareOp : OpenMP_Op<"atomic.compare", traits = [
 //===----------------------------------------------------------------------===//
 
 def ThreadprivateOp : OpenMP_Op<"threadprivate",
-                                [AllTypesMatch<["sym_addr", "tls_addr"]>]> {
+                                [AllTypesMatch<["sym_addr", "tls_addr"]>,
+                                DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "threadprivate directive";
   let description = [{
     The threadprivate directive specifies that variables are replicated, with
