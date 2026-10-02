@@ -3258,6 +3258,48 @@ LogicalResult SectionsOp::verifyRegions() {
   return success();
 }
 
+/// Return whether all operations in the op's regions are memory-effect-free.
+static bool areRegionsMemoryEffectFree(Operation *op) {
+  for (Region &region : op->getRegions())
+    for (Operation &nestedOp : region.getOps())
+      if (!isMemoryEffectFree(&nestedOp))
+        return false;
+  return true;
+}
+
+/// Model private storage and the effects of referenced privatisation recipes.
+template <typename OpType>
+static void getPrivatisationEffects(
+    OpType op, SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  std::optional<ArrayAttr> privateSyms = op.getPrivateSyms();
+  if (!privateSyms)
+    return;
+
+  MutableOperandRange privateVars = op.getPrivateVarsMutable();
+  auto iface = cast<BlockArgOpenMPOpInterface>(op.getOperation());
+  Block::BlockArgListType privateArgs = iface.getPrivateBlockArgs();
+  for (auto entry : llvm::zip_equal(privateVars, privateArgs, *privateSyms)) {
+    OpOperand &original = std::get<0>(entry);
+    BlockArgument privateCopy = std::get<1>(entry);
+
+    effects.emplace_back(MemoryEffects::Allocate::get(), privateCopy);
+    effects.emplace_back(MemoryEffects::Free::get(), privateCopy);
+    // private variables may read the original as a mold
+    effects.emplace_back(MemoryEffects::Read::get(), &original);
+
+    auto privateSym = cast<SymbolRefAttr>(std::get<2>(entry));
+    auto privatiser =
+        SymbolTable::lookupNearestSymbolFrom<PrivateClauseOp>(op, privateSym);
+    // RecursiveMemoryEffects only covers regions nested in the directive, not
+    // symbol-referenced regions, user defined types have arbitrary recipe bodies.
+    // Default to a conservative model of read and write to arbitrary memory.
+    if (!privatiser || !areRegionsMemoryEffectFree(privatiser)) {
+      effects.emplace_back(MemoryEffects::Read::get());
+      effects.emplace_back(MemoryEffects::Write::get());
+    }
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // ScopeOp
 //===----------------------------------------------------------------------===//
@@ -3317,6 +3359,22 @@ LogicalResult SingleOp::verify() {
 
   return verifyCopyprivateVarList(*this, getCopyprivateVars(),
                                   getCopyprivateSyms());
+}
+void SingleOp::getEffects(
+    llvm::SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+
+  if (!getNowait()) {
+    effects.emplace_back(MemoryEffects::Read::get());
+    effects.emplace_back(MemoryEffects::Write::get());
+  }
+
+  getPrivatisationEffects(*this, effects);
+
+  for (OpOperand &copyprivateVar : getCopyprivateVarsMutable()) {
+    effects.emplace_back(MemoryEffects::Read::get(), &copyprivateVar);
+    effects.emplace_back(MemoryEffects::Write::get(), &copyprivateVar);
+  }
 }
 
 //===----------------------------------------------------------------------===//
