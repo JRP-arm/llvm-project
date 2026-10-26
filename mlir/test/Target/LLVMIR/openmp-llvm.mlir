@@ -2259,11 +2259,8 @@ llvm.func @omp_atomic_capture_prefix_update(
     omp.atomic.read %v = %x : !llvm.ptr, !llvm.ptr, i32
   }
 
-  // CHECK: %[[xval:.*]] = phi i32
-  // CHECK: %[[newval:.*]] = fadd float %{{.*}}, %[[exprf]]
-  // CHECK: store float %[[newval]], ptr %{{.*}}
-  // CHECK: %[[newval_:.*]] = load i32, ptr %{{.*}}
-  // CHECK: %{{.*}} = cmpxchg ptr %[[xf]], i32 %[[xval]], i32 %[[newval_]] monotonic monotonic
+  // CHECK: %[[old:.*]] = atomicrmw fadd ptr %[[xf]], float %[[exprf]] monotonic
+  // CHECK: %[[newval:.*]] = fadd float %[[old]], %[[exprf]]
   // CHECK: store float %[[newval]], ptr %[[vf]]
   omp.atomic.capture {
     omp.atomic.update %xf : !llvm.ptr {
@@ -2274,11 +2271,8 @@ llvm.func @omp_atomic_capture_prefix_update(
     omp.atomic.read %vf = %xf : !llvm.ptr, !llvm.ptr, f32
   }
 
-  // CHECK: %[[xval:.*]] = phi i32
-  // CHECK: %[[newval:.*]] = fsub float %{{.*}}, %[[exprf]]
-  // CHECK: store float %[[newval]], ptr %{{.*}}
-  // CHECK: %[[newval_:.*]] = load i32, ptr %{{.*}}
-  // CHECK: %{{.*}} = cmpxchg ptr %[[xf]], i32 %[[xval]], i32 %[[newval_]] monotonic monotonic
+  // CHECK: %[[old:.*]] = atomicrmw fsub ptr %[[xf]], float %[[exprf]] monotonic
+  // CHECK: %[[newval:.*]] = fsub float %[[old]], %[[exprf]]
   // CHECK: store float %[[newval]], ptr %[[vf]]
   omp.atomic.capture {
     omp.atomic.update %xf : !llvm.ptr {
@@ -2504,13 +2498,8 @@ llvm.func @omp_atomic_capture_postfix_update(
     }
   }
 
-  // CHECK: %[[xval:.*]] = phi i32
-  // CHECK: %[[xvalf:.*]] = bitcast i32 %[[xval]] to float
-  // CHECK: %[[newval:.*]] = fadd float %{{.*}}, %[[exprf]]
-  // CHECK: store float %[[newval]], ptr %{{.*}}
-  // CHECK: %[[newval_:.*]] = load i32, ptr %{{.*}}
-  // CHECK: %{{.*}} = cmpxchg ptr %[[xf]], i32 %[[xval]], i32 %[[newval_]] monotonic monotonic
-  // CHECK: store float %[[xvalf]], ptr %[[vf]]
+  // CHECK: %[[old:.*]] = atomicrmw fadd ptr %[[xf]], float %[[exprf]] monotonic
+  // CHECK: store float %[[old]], ptr %[[vf]]
   omp.atomic.capture {
     omp.atomic.read %vf = %xf : !llvm.ptr, !llvm.ptr, f32
     omp.atomic.update %xf : !llvm.ptr {
@@ -2520,13 +2509,8 @@ llvm.func @omp_atomic_capture_postfix_update(
     }
   }
 
-  // CHECK: %[[xval:.*]] = phi i32
-  // CHECK: %[[xvalf:.*]] = bitcast i32 %[[xval]] to float
-  // CHECK: %[[newval:.*]] = fsub float %{{.*}}, %[[exprf]]
-  // CHECK: store float %[[newval]], ptr %{{.*}}
-  // CHECK: %[[newval_:.*]] = load i32, ptr %{{.*}}
-  // CHECK: %{{.*}} = cmpxchg ptr %[[xf]], i32 %[[xval]], i32 %[[newval_]] monotonic monotonic
-  // CHECK: store float %[[xvalf]], ptr %[[vf]]
+  // CHECK: %[[old:.*]] = atomicrmw fsub ptr %[[xf]], float %[[exprf]] monotonic
+  // CHECK: store float %[[old]], ptr %[[vf]]
   omp.atomic.capture {
     omp.atomic.read %vf = %xf : !llvm.ptr, !llvm.ptr, f32
     omp.atomic.update %xf : !llvm.ptr {

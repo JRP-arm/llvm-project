@@ -11496,7 +11496,9 @@ Value *OpenMPIRBuilder::emitRMWOpAsInstruction(Value *Src1, Value *Src2,
     return Builder.CreateXor(Src1, Src2);
   case AtomicRMWInst::Xchg:
   case AtomicRMWInst::FAdd:
+    return Builder.CreateFAdd(Src1, Src2);
   case AtomicRMWInst::FSub:
+    return Builder.CreateFSub(Src1, Src2);
   case AtomicRMWInst::BAD_BINOP:
   case AtomicRMWInst::Max:
   case AtomicRMWInst::Min:
@@ -11546,20 +11548,29 @@ Expected<std::pair<Value *, Value *>> OpenMPIRBuilder::emitAtomicUpdate(
   case AtomicRMWInst::Or:
   case AtomicRMWInst::Xor:
   case AtomicRMWInst::Xchg:
+  case AtomicRMWInst::FAdd:
     emitRMWOp = XElemTy;
     break;
   case AtomicRMWInst::Sub:
+  case AtomicRMWInst::FSub:
     emitRMWOp = (IsXBinopExpr && XElemTy);
     break;
   default:
     emitRMWOp = false;
   }
-  emitRMWOp &= XElemTy->isIntegerTy();
+  // Floating-point atomics require a supported operation and a power-of-two
+  // store size.
+  emitRMWOp &=
+      XElemTy->isIntegerTy() ||
+      (XElemTy->isFloatingPointTy() &&
+       (RMWOp == AtomicRMWInst::FAdd || RMWOp == AtomicRMWInst::FSub) &&
+       isPowerOf2_64(M.getDataLayout().getTypeStoreSize(XElemTy)));
 
   std::pair<Value *, Value *> Res;
   if (emitRMWOp) {
     AtomicRMWInst *RMWInst =
         Builder.CreateAtomicRMW(RMWOp, X, Expr, llvm::MaybeAlign(), AO);
+    RMWInst->setVolatile(VolatileX);
     if (IsIgnoreDenormalMode)
       RMWInst->setMetadata(llvm::LLVMContext::MD_atomic_ignore_denormal_mode,
                            llvm::MDNode::get(Builder.getContext(), {}));
