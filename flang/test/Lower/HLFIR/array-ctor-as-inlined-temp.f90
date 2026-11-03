@@ -1,5 +1,5 @@
 ! Test lowering of array constructors as inlined temporary.
-! RUN: bbc -emit-hlfir -o - %s | FileCheck %s
+! RUN: bbc -emit-hlfir -o - %s | FileCheck %s --implicit-check-not=ArrayConstructor
 
 subroutine test_simple(i)
   call takes_int([42, i])
@@ -296,3 +296,107 @@ end subroutine
 ! CHECK:           hlfir.destroy %[[VAL_58]] : !hlfir.expr<?xi32>
 ! CHECK:           return
 ! CHECK:         }
+
+subroutine test_arrays(a)
+  integer :: a(:, :)
+  call takes_int([a, a])
+end subroutine
+! CHECK-LABEL: func.func @_QPtest_arrays(
+! The total size is known before evaluating the entries, so use an inline
+! temporary.
+! CHECK:  fir.alloca index
+! CHECK:  %[[VAL_3:.*]]:2 = hlfir.declare {{.*}}Ea"
+! CHECK:  %[[VAL_5:.*]] = arith.constant 0 : index
+! CHECK:  %[[VAL_6:.*]]:3 = fir.box_dims %[[VAL_3]]#0, %[[VAL_5]] : (!fir.box<!fir.array<?x?xi32>>, index) -> (index, index, index)
+! CHECK:  %[[VAL_7:.*]] = fir.convert %[[VAL_6]]#1 : (index) -> i64
+! CHECK:  %[[VAL_8:.*]] = arith.constant 1 : index
+! CHECK:  %[[VAL_9:.*]]:3 = fir.box_dims %[[VAL_3]]#0, %[[VAL_8]] : (!fir.box<!fir.array<?x?xi32>>, index) -> (index, index, index)
+! CHECK:  %[[VAL_10:.*]] = fir.convert %[[VAL_9]]#1 : (index) -> i64
+! CHECK:  %[[VAL_11:.*]] = arith.muli %[[VAL_7]], %[[VAL_10]] : i64
+! CHECK:  %[[VAL_20:.*]] = arith.addi %[[VAL_11]], %{{.*}} : i64
+! CHECK:  %[[VAL_21:.*]] = fir.convert %[[VAL_20]] : (i64) -> index
+! CHECK:  %[[VAL_22:.*]] = fir.allocmem !fir.array<?xi32>, %[[VAL_21]] <{bindc_name = ".tmp.arrayctor", uniq_name = ""}>
+! CHECK:  %[[VAL_23:.*]] = fir.shape %[[VAL_21]] : (index) -> !fir.shape<1>
+! CHECK:  %[[VAL_24:.*]]:2 = hlfir.declare %[[VAL_22]](%[[VAL_23]]) uniq_name(".tmp.arrayctor") : (!fir.heap<!fir.array<?xi32>>, !fir.shape<1>) -> (!fir.box<!fir.array<?xi32>>, !fir.heap<!fir.array<?xi32>>)
+! CHECK:  fir.do_loop
+! CHECK:  fir.do_loop
+! CHECK:  hlfir.assign
+! CHECK:  }
+! CHECK:  }
+! CHECK:  fir.do_loop
+! CHECK:  fir.do_loop
+! CHECK:  hlfir.assign
+! CHECK:  }
+! CHECK:  }
+! CHECK:  %[[VAL_38:.*]] = arith.constant true
+! CHECK:  hlfir.as_expr %[[VAL_24]]#0 move %[[VAL_38]] : (!fir.box<!fir.array<?xi32>>, i1) -> !hlfir.expr<?xi32>
+
+subroutine copy(a, b)
+  integer :: a(:), b(:)
+  b = [a(:)]
+end subroutine
+! CHECK-LABEL: func.func @_QPcopy(
+! CHECK: %[[COUNTER:.*]] = fir.alloca index
+! CHECK: %[[STORAGE:.*]] = fir.allocmem !fir.array<?xi32>
+! CHECK: %[[TEMP:.*]]:2 = hlfir.declare %[[STORAGE]]
+! CHECK: fir.do_loop %[[I:.*]] = {{.*}} {
+! CHECK: %[[SOURCE:.*]] = hlfir.designate {{.*}} (%[[I]])
+! CHECK: %[[VALUE:.*]] = fir.load %[[SOURCE]]
+! CHECK: %[[POSITION:.*]] = fir.load %[[COUNTER]]
+! CHECK: %[[NEXT:.*]] = arith.addi %[[POSITION]], %{{.*}} : index
+! CHECK: fir.store %[[NEXT]] to %[[COUNTER]]
+! CHECK: %[[DEST:.*]] = hlfir.designate %[[TEMP]]#0 (%[[POSITION]])
+! CHECK: hlfir.assign %[[VALUE]] to %[[DEST]]
+! CHECK: }
+! CHECK: %[[RESULT:.*]] = hlfir.as_expr %[[TEMP]]#0 move
+! CHECK: hlfir.assign %[[RESULT]] to
+! CHECK: hlfir.destroy %[[RESULT]]
+
+subroutine rank_two(a, b)
+  integer :: a(-2:, 3:), b(:)
+  b = [a, a]
+end subroutine
+! CHECK-LABEL: func.func @_QPrank_two(
+! CHECK: fir.allocmem !fir.array<?xi32>
+! CHECK: fir.do_loop %[[J:.*]] = {{.*}} {
+! CHECK: fir.do_loop %[[I:.*]] = {{.*}} {
+! CHECK: %[[ROW:.*]] = arith.addi %[[I]], %{{.*}} : index
+! CHECK: %[[COL:.*]] = arith.addi %[[J]], %{{.*}} : index
+! CHECK: hlfir.designate {{.*}} (%[[ROW]], %[[COL]])
+! CHECK: hlfir.assign
+! CHECK: }
+! CHECK: }
+! CHECK: fir.do_loop
+! CHECK: fir.do_loop
+! CHECK: hlfir.assign
+! CHECK: }
+! CHECK: }
+! CHECK: hlfir.as_expr
+
+subroutine implied_do(a, b, n)
+  integer :: a(:), b(:), n, i
+  b = [(a + i, i=1,n)]
+end subroutine
+! CHECK-LABEL: func.func @_QPimplied_do(
+! CHECK: fir.allocmem !fir.array<?xi32>
+! CHECK: fir.do_loop
+! CHECK: %[[EXPR:.*]] = hlfir.elemental
+! CHECK: fir.do_loop
+! CHECK: hlfir.apply %[[EXPR]]
+! CHECK: hlfir.assign
+! CHECK: }
+! CHECK: hlfir.destroy %[[EXPR]]
+! CHECK: }
+! CHECK: hlfir.as_expr
+
+subroutine characters(a, b)
+  character(*) :: a(:)
+  character(4) :: b(:)
+  b = [character(4) :: a]
+end subroutine
+! CHECK-LABEL: func.func @_QPcharacters(
+! CHECK: fir.allocmem !fir.array<?x!fir.char<1,4>>
+! CHECK: fir.do_loop
+! CHECK: hlfir.assign {{.*}} : !hlfir.expr<!fir.char<1,?>>, !fir.ref<!fir.char<1,4>>
+! CHECK: }
+! CHECK: hlfir.as_expr
